@@ -5,13 +5,19 @@ using Gadfly
 using Plots
 using JuMP, Gurobi
 
+export plotTwoCriteriaOpt
+
 function plotTwoCriteriaOpt(base::Model, c1::AffExpr, c2::AffExpr, m1::Symbol, m2::Symbol,
         min=-20, max=50, hugenum=1e18)
 
-    @constraint(base, c1less, c1 <= hugenum)
-    @constraint(base, c1more, c1 >= -hugenum)
-    @constraint(base, c2less, c2 <= hugenum)
-    @constraint(base, c2more, c2 >= -hugenum)
+    basecopy = deepcopy(base)
+    c1copy = copy(c1,basecopy)
+    c2copy = copy(c2,basecopy)
+
+    @constraint(basecopy, c1less, c1copy <= hugenum)
+    @constraint(basecopy, c1more, c1copy >= -hugenum)
+    @constraint(basecopy, c2less, c2copy <= hugenum)
+    @constraint(basecopy, c2more, c2copy >= -hugenum)
 
     # create cache so that not every optimization problem
     #   has to be solved every re-plot
@@ -20,10 +26,10 @@ function plotTwoCriteriaOpt(base::Model, c1::AffExpr, c2::AffExpr, m1::Symbol, m
         if Base.haskey(cache, r)
             return Base.get(cache, r, (-1,-1,-1))
         end
-        
+
         if obj == 1
             # objective 1 is objective, objective 2 is constraint
-            @objective(base, m1, c1)
+            @objective(basecopy, m1, c1copy)
             if m2 == :Min
                 JuMP.setRHS(c2less, r)
             else
@@ -31,16 +37,16 @@ function plotTwoCriteriaOpt(base::Model, c1::AffExpr, c2::AffExpr, m1::Symbol, m
             end
         else
             # objective 2 is objective, objective 1 is constraint
-            @objective(base, m2, c2)
+            @objective(basecopy, m2, c2copy)
             if m1 == :Min
                 JuMP.setRHS(c1less, r)
             else
                 JuMP.setRHS(c1more, r)
             end
         end
-        solve(base, suppress_warnings=true)
-        cache[r] = (getobjectivevalue(base), getvalue(a), getvalue(b))
-        return getobjectivevalue(base), getvalue(a), getvalue(b)
+        solve(basecopy, suppress_warnings=true)
+        cache[r] = (getobjectivevalue(basecopy), getvalue(c1copy), getvalue(c2copy))
+        return getobjectivevalue(basecopy), getvalue(c1copy), getvalue(c2copy)
     end
 
     # use the GR plot library
@@ -72,9 +78,9 @@ function lp_visualization(arr)
         while i in explored
             i += 1
         end
-        
+
         push!(explored, i)
-        
+
         for j in 1:size(arr,1)
             if j == prev_i || i == j
                 continue
@@ -100,7 +106,7 @@ function lp_visualization(arr)
                 end
             end
         end
-        
+
         if yes == 0
             i = 1
         end
@@ -110,7 +116,7 @@ function lp_visualization(arr)
         println("Infeasible Problem!!!")
         return
     end
-    
+
     x = valid_pts[:,1]
     y = valid_pts[:,2]
 
@@ -121,11 +127,11 @@ function plotGivenModel(m)
     JuMP.build(m)
     A = MathProgBase.getconstrmatrix(internalmodel(m))
     x = MathProgBase.getconstrLB(internalmodel(m))
-    
+
     rows = MathProgBase.numconstr(m)
     cols = MathProgBase.numvar(m) + 1
     arr = zeros(rows, cols)
-    
+
     for i=1:rows
         for j=1:cols-1
             arr[i,j] = A[i,j]
@@ -150,7 +156,7 @@ function plotGivenModel(m)
     valid_pts = convert(Array{Float64,2}, valid_pts)
 
     obj = MathProgBase.getobj(internalmodel(m))
-    
+
     gr()
     @manipulate for r in floor(xs[1]):0.1:ceil(xs[2])
         plot(valid_pts[:,1], valid_pts[:,2], xlims=xs, ylims=ys)
